@@ -1,3 +1,4 @@
+```html name=my_forever_valentine.html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -495,17 +496,17 @@
                 <div class="buttons-row">
                     <button class="response-btn yes-btn" id="yesBtn" aria-label="Yes, a thousand times" data-action="yes">
                         <span class="btn-emoji" aria-hidden="true">❤️</span>
-                        <span>YES, A Thousand Times!</span>
+                        <span class="btn-text">YES, A Thousand Times!</span>
                     </button>
                     <button class="response-btn no-btn" id="noBtn" aria-label="I need to think" data-action="no">
                         <span class="btn-emoji" aria-hidden="true">❌</span>
-                        <span>I Need to Think</span>
+                        <span class="btn-text">I Need to Think</span>
                     </button>
                 </div>
             </div>
 
             <div class="response-display" id="responseDisplay" role="status" aria-live="polite">
-                <p class="celebration-message" id="celebrationMessage"></p>
+                <p class="celebration-message" id="celebrationMessage" tabindex="-1"></p>
             </div>
         </div>
 
@@ -516,22 +517,34 @@
     </div>
 
     <script>
-        // Minimal performant confetti implementation (canvas)
+        // Minimal performant confetti implementation (DPR-aware canvas)
         function Confetti(canvas){
             if(!canvas) return null;
             const ctx = canvas.getContext('2d');
             let particles = [];
             let running = false;
-            const w = () => canvas.width = canvas.clientWidth;
-            const h = () => canvas.height = canvas.clientHeight;
-            function resize(){ w(); h(); }
+            let DPR = window.devicePixelRatio || 1;
+
+            function resize(){
+                const cssW = canvas.clientWidth || 0;
+                const cssH = canvas.clientHeight || 0;
+                canvas.width = Math.max(1, Math.round(cssW * DPR));
+                canvas.height = Math.max(1, Math.round(cssH * DPR));
+                canvas.style.width = cssW + 'px';
+                canvas.style.height = cssH + 'px';
+                // Make drawing coordinates use CSS pixels
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            }
             resize();
             window.addEventListener('resize', debounce(resize, 200));
+            window.addEventListener('orientationchange', debounce(resize, 200));
 
             function startBurst(xPct, yPct){
                 const count = 80;
+                const cssX = xPct * canvas.clientWidth;
+                const cssY = yPct * canvas.clientHeight;
                 for(let i=0;i<count;i++){
-                    particles.push(createParticle(xPct * canvas.width, yPct * canvas.height));
+                    particles.push(createParticle(cssX, cssY));
                 }
                 if(!running){ running = true; requestAnimationFrame(loop); }
             }
@@ -548,7 +561,8 @@
             }
 
             function loop(){
-                ctx.clearRect(0,0,canvas.width,canvas.height);
+                // Clear using CSS pixel dimensions
+                ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
                 for(let i=particles.length-1;i>=0;i--){
                     const p = particles[i];
                     p.age++;
@@ -564,10 +578,10 @@
                     ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
                     ctx.restore();
                 }
-                if(particles.length>0){ requestAnimationFrame(loop); } else { running=false; ctx.clearRect(0,0,canvas.width,canvas.height); }
+                if(particles.length>0){ requestAnimationFrame(loop); } else { running=false; ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight); }
             }
 
-            return { startBurst };
+            return { startBurst, resize };
         }
 
         function randomColor(){
@@ -623,6 +637,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             createFloatingDecorations();
 
+            const container = document.querySelector('.valentine-container');
             const yesBtn = document.getElementById('yesBtn');
             const noBtn = document.getElementById('noBtn');
             const responseDisplay = document.getElementById('responseDisplay');
@@ -654,28 +669,36 @@
 
             // keyboard support
             function handleKey(e){
-                if(document.activeElement === yesBtn && (e.key === 'Enter' || e.key === ' ')) { yesBtn.click(); }
-                if(document.activeElement === noBtn && (e.key === 'Enter' || e.key === ' ')) { noBtn.click(); }
-                if(e.key === 'Escape') { responseDisplay.style.display = 'none'; }
+                if(document.activeElement === yesBtn && (e.key === 'Enter' || e.key === ' ')) { yesBtn.click(); e.preventDefault(); }
+                if(document.activeElement === noBtn && (e.key === 'Enter' || e.key === ' ')) { noBtn.click(); e.preventDefault(); }
+                if(e.key === 'Escape') {
+                    responseDisplay.style.display = 'none';
+                    // return focus to yes button for convenience
+                    yesBtn.focus();
+                }
             }
             document.addEventListener('keydown', handleKey);
 
             // Yes button clicked
             yesBtn.addEventListener('click', function() {
                 const randomResponse = romanticResponses[Math.floor(Math.random() * romanticResponses.length)];
-                celebrationMessage.innerHTML = randomResponse;
+                // use textContent to avoid accidental HTML injection and keep structure stable
+                celebrationMessage.textContent = randomResponse;
                 responseDisplay.style.display = 'block';
 
                 // Create celebration (canvas)
                 if(confetti && confetti.startBurst){ confetti.startBurst(0.5, 0.35); }
 
-                // Change button appearance
-                yesBtn.innerHTML = '<span class="btn-emoji" aria-hidden="true">❤️</span> <span>I SAID YES!</span>';
+                // Change button appearance (preserve structure with btn-text)
+                yesBtn.innerHTML = '<span class="btn-emoji" aria-hidden="true">❤️</span> <span class="btn-text">I SAID YES!</span>';
                 yesBtn.style.background = 'linear-gradient(to right, #8a2be2, #ff1493)';
                 yesBtn.style.animation = 'none';
 
                 // Hide no button
                 noBtn.style.display = 'none';
+
+                // Move focus to the message so screen readers announce it
+                celebrationMessage.focus();
 
                 // Play romantic sound
                 playRomanticSound();
@@ -687,60 +710,72 @@
 
                 // If clicked many times, turn into yes
                 if (noClickCount >= noButtonPhrases.length - 2) {
-                    celebrationMessage.innerHTML = "Okay, I can't resist any longer! YES, I'll be your Valentine! 💕";
+                    celebrationMessage.textContent = "Okay, I can't resist any longer! YES, I'll be your Valentine! 💕";
                     responseDisplay.style.display = 'block';
                     noBtn.style.display = 'none';
-                    yesBtn.innerHTML = '<span class="btn-emoji" aria-hidden="true">❤️</span> <span>She finally said YES!</span>';
+                    yesBtn.innerHTML = '<span class="btn-emoji" aria-hidden="true">❤️</span> <span class="btn-text">She finally said YES!</span>';
                     if(confetti && confetti.startBurst){ confetti.startBurst(0.5, 0.35); }
+                    celebrationMessage.focus();
                     return;
                 }
 
-                // Change button text
-                const span = noBtn.querySelector('span');
-                if(span) span.textContent = noButtonPhrases[noClickCount]; else noBtn.textContent = noButtonPhrases[noClickCount];
+                // Change button text safely (target .btn-text)
+                const labelSpan = noBtn.querySelector('.btn-text');
+                if (labelSpan) labelSpan.textContent = noButtonPhrases[noClickCount];
+                else noBtn.textContent = noButtonPhrases[noClickCount];
 
-                // Make yes button more appealing
+                // Make yes button more appealing briefly
                 yesBtn.style.transform = 'scale(1.1)';
                 setTimeout(() => { yesBtn.style.transform = 'scale(1)'; }, 300);
 
-                // Move no button - now correctly applied
-                const moveX = (Math.random() - 0.5) * (40 + noClickCount * 10);
-                const moveY = (Math.random() - 0.5) * (30 + noClickCount * 10);
+                // Move no button but clamp movement so it stays visible on small screens
+                const baseX = 40 + noClickCount * 10;
+                const baseY = 30 + noClickCount * 10;
+                const maxX = Math.min(baseX, (container ? container.clientWidth * 0.35 : baseX));
+                const maxY = Math.min(baseY, (container ? container.clientHeight * 0.25 : baseY));
+                const moveX = (Math.random() - 0.5) * (maxX * 2);
+                const moveY = (Math.random() - 0.5) * (maxY * 2);
                 noBtn.style.transform = `translate(${moveX}px, ${moveY}px)`;
 
-                // Show hint messages
+                // Show hint messages briefly (announceable)
                 if (noClickCount === 2) {
-                    celebrationMessage.innerHTML = "The pink button seems happier... 😊";
+                    celebrationMessage.textContent = "The pink button seems happier... 😊";
                     responseDisplay.style.display = 'block';
+                    celebrationMessage.focus();
                     setTimeout(() => { responseDisplay.style.display = 'none'; }, 2000);
                 }
 
                 if (noClickCount === 4) {
-                    celebrationMessage.innerHTML = "I think you know the right answer... 💝";
+                    celebrationMessage.textContent = "I think you know the right answer... 💝";
                     responseDisplay.style.display = 'block';
+                    celebrationMessage.focus();
                     setTimeout(() => { responseDisplay.style.display = 'none'; }, 2000);
                 }
             });
 
-            // Make no button move on hover
+            // Make no button move on hover (keeps focusable because transform doesn't remove it)
             noBtn.addEventListener('mouseover', function() {
                 if (noClickCount > 1) {
-                    const maxMove = 80;
+                    const maxMove = Math.min(80, container ? container.clientWidth * 0.3 : 80);
                     const moveX = (Math.random() - 0.5) * maxMove;
                     const moveY = (Math.random() - 0.5) * maxMove;
                     this.style.transform = `translate(${moveX}px, ${moveY}px)`;
                 }
             });
 
-            // Ensure canvas covers container
+            // Ensure canvas covers container (delegate to confetti.resize if available)
             function fitCanvas(){
+                if (confetti && typeof confetti.resize === 'function') {
+                    confetti.resize();
+                    return;
+                }
                 const c = confettiCanvas;
-                const container = document.querySelector('.valentine-container');
-                if(!c || !container) return;
-                c.style.width = container.clientWidth + 'px';
-                c.style.height = container.clientHeight + 'px';
-                c.width = container.clientWidth * devicePixelRatio;
-                c.height = container.clientHeight * devicePixelRatio;
+                const containerEl = container || document.querySelector('.valentine-container');
+                if(!c || !containerEl) return;
+                c.style.width = containerEl.clientWidth + 'px';
+                c.style.height = containerEl.clientHeight + 'px';
+                c.width = containerEl.clientWidth * devicePixelRatio;
+                c.height = containerEl.clientHeight * devicePixelRatio;
                 c.getContext('2d').scale(devicePixelRatio, devicePixelRatio);
             }
             fitCanvas();
@@ -785,3 +820,4 @@
     </script>
 </body>
 </html>
+```
